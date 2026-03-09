@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "staging": "aurika-staging",
+    "prod": "aurika-13fd8"
+  }
+}

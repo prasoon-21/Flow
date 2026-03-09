@@ -1,0 +1,277 @@
+# Testing task — Aurika Flow MVP
+
+## Mobile-Centric UI (NEW)
+- What: Full mobile-responsive refactor across all pages.
+- How: Test on a mobile device or Chrome DevTools mobile emulator (iPhone 14/Pixel 7).
+- Use cases:
+  - **Bottom Tab Bar**: 8 navigation icons appear at the bottom of the screen on mobile (<768px). Active tab highlighted. Tapping navigates between pages. Bar respects safe-area-inset-bottom.
+  - **Header**: Compact single-row header at top of screen (sticky). Shows page title + notification bell + profile avatar. Brand name "Aurika Flow" hidden on mobile to save space.
+  - **Dashboard**: KPI cards display in 2-column grid. Mini stats row scrolls horizontally. Main content grid stacks to single column. Tables shrink font sizes.
+  - **Orders/Purchases (list-detail)**: On mobile, shows list view by default. Tapping an order navigates to full-screen detail view with "← Back" button. "+ New" button opens create form with back button. Cancel returns to list. Form inputs are 44px+ touch targets.
+  - **Contacts**: Same list-detail mobile pattern as orders. Tapping a contact shows full-screen detail with back button. Activity and ledger tabs work.
+  - **Inventory**: Table hidden on mobile, replaced with card-per-product layout showing Name, SKU, Price, Cost, Stock, Value in a 2×2 grid.
+  - **Ledger**: Desktop table hidden on mobile. Transaction cards show contact, reference+date, amount+type badge. Balance cards show contact + balance amount. Tabs are touch-friendly (44px height).
+  - **Reports**: Stat cards go 2-column. Report tables shrink text for mobile. Single-column layout.
+  - **Login**: Already mobile-friendly, verify centered card renders well on small screens.
+  - **Settings**: Verify tag management and notification settings are usable on mobile.
+  - **Touch targets**: All buttons, links, selects are at least 44px on touch devices.
+  - **No horizontal scroll**: Body doesn't scroll horizontally on any page.
+  - **iOS input zoom prevention**: Inputs render at 16px font to prevent auto-zoom.
+
+## Dashboard
+- What: Overview stats (Total Orders, Total Purchases, Inventory value, Outstanding balance).
+- How: Open `/` (Dashboard). Verify stat cards load with data from dummy data.
+- Use cases:
+  - Four stat cards render with correct values from seed data.
+  - No errors or loading spinners stuck.
+
+## Orders page
+- What: Split-pane order list + order detail. Create order form.
+- How: Open `/orders`. Click order rows. Click "+ New" to create.
+- Use cases:
+  - Left pane shows list of orders with ID, customer name, total.
+  - Clicking an order shows detail: customer, date, items table (product, qty, price, total), order total.
+  - "+ New" opens create form with customer dropdown (shows only customers, not suppliers).
+  - Product picker shows product name + price.
+  - Creating an order adds it to the list, reduces inventory stock, adds a ledger debit entry.
+  - After creating, invalidating queries refreshes Orders, Inventory, and Ledger data.
+
+## Inventory page
+- What: Product table showing stock and value.
+- How: Open `/inventory`. Review table.
+- Use cases:
+  - Table has columns: Name, SKU, Price, Cost, Stock, Value.
+  - Value = stock × costPrice per row.
+  - Data loads from seed products.
+
+## Purchases page
+- What: Split-pane purchase list + detail. Create purchase form.
+- How: Open `/purchases`. Click rows. Click "+ New" to create.
+- Use cases:
+  - Left pane shows purchases with ID, supplier name, total.
+  - Detail shows supplier, date, items table (product, qty, cost, total), purchase total.
+  - Create form shows only supplier contacts in dropdown.
+  - Product picker shows product name + cost price.
+  - Creating a purchase increases inventory stock and adds a ledger credit entry.
+
+## Ledger page
+- What: Transaction list and balance summary tabs.
+- How: Open `/ledger`. Switch between Transactions and Balances tabs.
+- Use cases:
+  - Transactions tab: table with Date, Contact, Reference, Type (debit/credit pill), Amount.
+  - Debit amounts red, credit amounts green.
+  - Balances tab: table with Contact, Balance. Positive = debit, negative = credit.
+  - Data reflects both seed entries and any entries created by orders/purchases.
+
+## Contacts page
+- What: Split-pane contact list + detail with Activity and Ledger tabs.
+- How: Open `/contacts`. Click contacts; switch tabs.
+- Use cases:
+  - Contact list shows name + type pill (customer/supplier).
+  - Detail shows name, email, phone.
+  - Activity tab shows combined orders, purchases, and payments sorted by date.
+  - Ledger tab shows ledger entries for the selected contact with debit/credit styling.
+
+## Reports page
+- What: Summary stats + top products + balance by contact.
+- How: Open `/reports`. Verify data.
+- Use cases:
+  - Four stat cards: Total Revenue, Total Purchases, Inventory Value, Outstanding.
+  - Top Products by Revenue table shows products ranked by sales.
+  - Balance by Contact table matches ledger balances.
+
+## Settings
+- What: Tags management + notifications settings.
+- How: Open `/settings`. Verify redirect to `/settings/tags`. Navigate to notifications.
+- Use cases:
+  - `/settings` redirects to `/settings/tags`.
+  - Tags page allows CRUD on tags.
+  - Notifications page gracefully shows FCM disabled message.
+  - createdBy accepts user ID or email; resolved to the user document id.
+
+## Contact page
+- What: Contact activity timeline and detail drawers.
+- How: Open `Contacts` page and click activity items.
+- Use cases:
+  - Activity filters work and list updates.
+  - Clicking an activity opens the correct drawer (email/ticket/order/other).
+  - Drawer closes via close button and backdrop click.
+  - Shopify sync button is hidden when Shopify is disconnected.
+
+## Shopify contact search results
+- What: Shopify results presentation within contact search.
+- How: Search in `Contacts`, then trigger Shopify search.
+- Use cases:
+  - Shopify result cards match the standard contact list styling.
+  - Shopify result cards use Shopify green styling and fill the panel width.
+  - No per-result "Shopify" tag appears in the list.
+  - Empty internal search message reads "No contacts found in the internal database."
+
+## Zoho account selection
+- What: Select which Zoho inbox to manage when multiple accounts are available.
+- How: Connect Zoho in `Settings > Email` using a login with multiple accounts; choose an inbox and complete sync.
+- Use cases:
+  - OAuth success with multiple accounts shows a selection list.
+  - Confirming a selection saves the integration and syncs with the chosen email address.
+  - Cancel clears the selection state and returns to provider selection.
+  - Single-account logins still connect immediately without prompting.
+  - Accounts missing emails allow manual entry; the connect button stays disabled until the email is valid.
+  - When a Zoho account exposes multiple addresses, each address appears as a selectable option.
+
+## Email inbox sync + replies
+- What: Synced emails appear in the inbox and Zoho replies stay in-thread.
+- How: Sync from `Email` page and then reply to a Zoho conversation.
+- Use cases:
+  - Newly imported emails appear in the inbox within the default 30-day range.
+  - Conversation ordering does not regress when older messages are imported.
+  - Zoho replies show up in the same thread (not a new conversation).
+
+## Cross-date channel search
+- What: Email/WhatsApp/IVR search ignores the date range filter and finds older conversations/calls.
+- How: In each channel page, set the date range to a single day with no matches, then search for a known contact/email/phone that exists outside that range.
+- Use cases:
+  - Email search returns matches even when the selected date range does not include the conversation.
+  - WhatsApp search returns matches outside the selected date range.
+  - IVR phone search returns calls outside the selected date range and still paginates with Load more.
+  - Email search returns matches without requiring a manual "Load more" click when results exist in recent pages.
+
+## Access denied channel pages
+- What: Direct navigation to a restricted channel page shows access denied and does not fetch channel data.
+- How: Use a user without the module, paste the URL for `/whatsapp`, `/email`, `/ivr`, `/chatbot`.
+- Use cases:
+  - Access denied card renders in place of the channel UI.
+  - Network tab shows no calls to channel inbox/detail endpoints for the restricted page.
+  - No loading spinners keep running on restricted pages.
+
+## Access denied contacts/tickets
+- What: Direct navigation to `/contacts` and `/tickets` respects module access and backend denies requests.
+- How: Use a user missing `contacts` or `tickets` modules and open those URLs.
+- Use cases:
+  - Access denied card renders in place of contacts/tickets UI.
+  - Contact/ticket API calls return FORBIDDEN.
+  - No contact/ticket data is rendered or loaded.
+
+## Global route guard
+- What: Hybrid route guard blocks restricted routes before page components mount.
+- How: Log in as a user missing `tickets` or `contacts` and paste those URLs; also try an allowed route.
+- Use cases:
+  - Page component does not mount (no network calls for its data).
+  - Access denied shows quickly and consistently.
+  - Allowed routes still render normally.
+
+## Ticket activity filter layout
+- What: Activity filters stay visible and cards do not overlap them.
+- How: Load a ticket with a long activity list and scroll inside the activity card.
+- Use cases:
+  - Filter chips stay visible and are not covered by activity cards.
+  - Spacing between activity cards looks consistent with the rest of the layout.
+
+## Shipping labels list + create
+- What: Shipping label list, create form, Shopify customer search, and rate comparison.
+- How: Open `Shipping` page, search Shopify customers, select product/warehouse, compare rates, and submit.
+- Use cases:
+  - List loads recent shipping requests with status, carrier, order id, and actions.
+  - Search filters list by customer name/email/phone.
+  - Product selection auto-fills dimensions/weight; warehouse selection auto-fills from address.
+  - Product search allows creating a new product and saving it for future selection.
+  - Warehouse search allows saving a new warehouse from custom address fields.
+  - Address validation allows common address symbols (- / # . , :) and shows inline errors.
+  - Customer search prioritizes internal contacts; if no address, Shopify sync fills it.
+  - Compare rates opens modal and selecting a service updates the Service dropdown.
+  - Compare rates shows a USPS 5 lb limit note when weight exceeds 5 lbs.
+  - Submit creates request(s), adds them to the list immediately, and attempts to open label URLs.
+  - Label creation uses ViteDirect `/shipment2/{carrier}` and fetches label via `/shipment2/label/:orderId`.
+  - Shipping provider abstraction supports swapping ViteDirect for other carriers later.
+
+## Shipping rates by service type
+- What: Service-level rate comparison and selection for shipping labels.
+- How: Open `Shipping`, fill From/To + dimensions, compare rates, select a service, and submit.
+- Use cases:
+  - Rate modal lists all UPS/FedEx/USPS services with ETA and price, sorted lowest price first.
+  - Selecting a service updates the Service dropdown.
+  - Label creation uses the selected service type + channel.
+  - USPS services show a 5 lb limit note and are not selectable when weight exceeds 5 lbs.
+
+## Tags settings UI polish
+- What: Tags management layout consistency and hover actions.
+- How: Open `Settings > Tags` and browse tag cards and forms.
+- Use cases:
+  - Selected tag is visually highlighted in the list.
+  - Edit/Delete actions appear on hover/focus for each tag card.
+  - Form sections and labels use consistent typography and spacing.
+
+## Contact sync + copy actions
+- What: Shopify sync button/status and copy icons for email/phone.
+- How: Open `Contacts`, `Tickets`, and `Email` pages; select a contact and use the sync/copy actions.
+- Use cases:
+  - Contacts list shows a "+ Create" primary button.
+  - Contact detail header shows Shopify sync status and the sync button disables when Shopify is disconnected.
+  - Syncing updates the contact and shows success or "no match" feedback.
+  - Copy icons next to email/phone copy the value to clipboard on the contact overview and contact cards.
+
+## Ticket date range filter
+- What: Date range control styling on the Tickets list.
+- How: Open `Tickets` and compare the date range filter to other pages (Email/WhatsApp/IVR).
+- Use cases:
+  - Date range control uses the shared DateRangePicker styling and label presentation.
+  - Date range control matches the compact dashboard/home filter styling.
+  - Both start and end date inputs open the picker and are clickable.
+  - Results count aligns on the same row as the date range on desktop.
+
+## Ticket date range flexibility
+- What: Tickets date range allows any start/end dates.
+- How: On `Tickets`, set start/end well beyond 30 days and (optionally) future dates; adjust start after end.
+- Use cases:
+  - Date range accepts spans longer than 30 days.
+  - End date remains on/after start date when adjusting dates.
+  - Future dates are allowed if selected.
+
+## Channel date range future
+- What: Ticket/Email/WhatsApp/IVR date ranges accept future dates without server errors.
+- How: Pick a future end date on Tickets, Email, WhatsApp, and IVR pages, then load lists/analytics.
+- Use cases:
+  - No "Date range cannot be in the future" errors returned.
+  - Lists/analytics return empty or partial data without failing.
+
+## Tag categories
+- What: Tag category update card and refreshed tags UI.
+- How: Open `Settings > Tags`, rename a category, and add tags to it.
+- Use cases:
+  - Category update renames all tags in the selected category.
+  - Additional selected tags are moved into the updated category.
+  - Tag create/update card, category card, and tag list align with the theme.
+  - Tag suggestions show in-scope tags first; if none match, show other-scope tags with scope badges.
+
+## Dashboard ticket analytics
+- What: Ticket analytics card with status breakdown and resolution metrics.
+- How: On the dashboard, adjust the date range and verify analytics update for a tenant with ticket access.
+- Use cases:
+  - Tickets Created reflects the count of tickets created inside the range.
+  - Status breakdown bars match the created ticket counts per status.
+  - Closed in Range and Avg Resolution populate when tickets are closed within the range.
+  - Above Avg count highlights tickets with resolution times longer than the average.
+
+## Ticket tag analytics
+- What: Tag pair analytics for ticket tags with category filtering.
+- How: Open `Tickets > Analytics`, adjust date range, and try category/tag filters.
+- Use cases:
+  - Total/Tagged/Unique counts update when the date range changes.
+  - Top Tag Pairs list reflects the selected category filter.
+  - Selecting a Focus Tag shows its most common partner tags.
+  - Empty states appear when no tags or pairs exist for the range.
+
+## Ticket tag pair chip styling
+- What: Visual hierarchy and chip styling for tag pair KPI cards.
+- How: Open `Tickets > Analytics` and inspect Top Tag Pairs cards.
+- Use cases:
+  - Tag chips use a soft tint (not primary button blue) and feel informational.
+  - Second tag uses a lighter/outlined treatment for hierarchy.
+  - Pair count remains the strongest emphasis on each card.
+
+## Shipping rate comparison (USPS 5 lb rule)
+- What: Compare rates modal behavior when package weight exceeds USPS limits.
+- How: On `Shipping Labels`, enter a package weight > 5 lbs and click "Compare Rates".
+- Use cases:
+  - FedEx/UPS rates still load successfully.
+  - USPS appears with a notice explaining the 5 lb limit instead of an error.
+  - No error toast shown for USPS weight limit.

@@ -1,0 +1,47 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 18px;
+  border: none;
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.titleCase {
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+
+.green {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.yellow {
+  background: rgba(245, 158, 11, 0.12);
+  color: #92400e;
+}
+
+.remove {
+  border: none;
+  background: rgba(255, 255, 255, 0.45);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text-tertiary);
+}
+
+.remove:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
