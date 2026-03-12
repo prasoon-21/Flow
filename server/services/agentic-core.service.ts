@@ -6,9 +6,13 @@
  *   2. /api/blocks/extract/json  — Structured JSON extraction from text
  */
 
-const AGENTIC_CORE_URL = process.env.AGENTIC_CORE_URL;
-if (!AGENTIC_CORE_URL) throw new Error('AGENTIC_CORE_URL environment variable is required');
 const REQUEST_TIMEOUT_MS = 60_000;
+
+function getAgenticCoreUrl(): string {
+  const url = process.env.AGENTIC_CORE_URL;
+  if (!url) throw new Error('AGENTIC_CORE_URL environment variable is required');
+  return url;
+}
 
 interface DocumentPayload {
   base64: string;
@@ -48,7 +52,7 @@ async function analyzeFile(document: DocumentPayload): Promise<string> {
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${AGENTIC_CORE_URL}/api/blocks/file/analyze`, {
+    const res = await fetch(`${getAgenticCoreUrl()}/api/blocks/file/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -96,7 +100,7 @@ async function extractJson(text: string): Promise<ExtractedPurchaseData> {
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${AGENTIC_CORE_URL}/api/blocks/extract/json`, {
+    const res = await fetch(`${getAgenticCoreUrl()}/api/blocks/extract/json`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
