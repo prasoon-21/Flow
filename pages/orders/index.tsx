@@ -90,9 +90,6 @@ export default function OrdersPage() {
     setNewItems([]);
     setSelectedId(res.order.id);
     setMobileView('detail');
-
-    // Auto download after creating
-    router.replace(`/orders?pdfId=${res.order.id}`);
   };
 
   const handleCreateContact = async () => {
@@ -122,13 +119,13 @@ export default function OrdersPage() {
   };
 
   return (
-    <Layout title="Invoices">
+    <Layout title="Orders">
       <div className="orders-layout">
         <aside className={`order-list ${mobileView === 'list' ? 'mobile-show' : 'mobile-hide'}`}>
           <Card padding="0">
             <div className="list-header">
-              <h3>Invoices</h3>
-              <Button size="sm" onClick={() => { setShowCreate(true); setMobileView('detail'); }}>+ Create Invoice</Button>
+              <h3>Orders</h3>
+              <Button size="sm" onClick={() => { setShowCreate(true); setMobileView('detail'); }}>+ New Order</Button>
             </div>
             {orders.map((o) => (
               <button
@@ -153,7 +150,7 @@ export default function OrdersPage() {
           {showCreate ? (
             <Card>
               <button className="back-btn" onClick={() => { setShowCreate(false); setMobileView('list'); }}>← Back</button>
-              <h3>Create Invoice</h3>
+              <h3>New Order</h3>
               <label className="field-label">Customer</label>
               <div className="customer-picker">
                 <div className="search-wrapper">
@@ -250,23 +247,36 @@ export default function OrdersPage() {
               <div className="form-actions">
                 <Button size="sm" variant="ghost" onClick={() => { setShowCreate(false); setMobileView('list'); }}>Cancel</Button>
                 <Button size="sm" onClick={handleCreate} disabled={createMutation.isLoading}>
-                  {createMutation.isLoading ? 'Generating…' : 'Generate Invoice'}
+                  {createMutation.isLoading ? 'Creating…' : 'Create Order'}
                 </Button>
               </div>
             </Card>
           ) : selected ? (
             <Card>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <button className="back-btn" onClick={() => setMobileView('list')}>← Back</button>
-                <Button
-                  size="sm"
-                  onClick={() => router.replace(`/orders?pdfId=${selected.id}`)}
-                  variant="secondary"
-                >
-                  Download Invoice PDF
-                </Button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {!(pdfQuery.data && router.query.pdfId === selected.id) && (
+                    <Button
+                      size="sm"
+                      onClick={() => router.replace(`/orders?pdfId=${selected.id}`)}
+                      variant="outline"
+                      disabled={pdfQuery.isLoading && router.query.pdfId === selected.id}
+                    >
+                      {pdfQuery.isLoading && router.query.pdfId === selected.id ? 'Generating…' : 'Generate Invoice'}
+                    </Button>
+                  )}
+                  {pdfQuery.data && router.query.pdfId === selected.id && (
+                    <Button
+                      size="sm"
+                      onClick={() => handleDownloadPdf(pdfQuery.data.pdfBase64, selected.id)}
+                    >
+                      Download Invoice PDF
+                    </Button>
+                  )}
+                </div>
               </div>
-              <h2 className="detail-title">Invoice {selected.id}</h2>
+              <h2 className="detail-title">Order {selected.id}</h2>
               <p className="detail-meta">
                 Customer: <strong>{contactMap[selected.contactId] ?? selected.contactId}</strong>
                 &nbsp;&middot;&nbsp;
@@ -293,18 +303,16 @@ export default function OrdersPage() {
               </div>
 
               {pdfQuery.data && router.query.pdfId === selected.id && (
-                <div style={{ marginTop: '20px', padding: '10px', background: '#e6fffa', border: '1px solid #319795', borderRadius: '8px' }}>
-                  <strong>Invoice Generated Successfully</strong>
-                  <div style={{ marginTop: '10px' }}>
-                    <Button size="sm" onClick={() => handleDownloadPdf(pdfQuery.data.pdfBase64, selected.id)}>
-                      Save PDF to Device
-                    </Button>
-                  </div>
+                <div style={{ marginTop: '20px', padding: '12px 14px', background: '#e6fffa', border: '1px solid #319795', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong style={{ fontSize: '13px' }}>✓ Invoice Ready</strong>
+                  <Button size="sm" variant="ghost" onClick={() => handleDownloadPdf(pdfQuery.data.pdfBase64, selected.id)}>
+                    Save PDF to Device
+                  </Button>
                 </div>
               )}
             </Card>
           ) : (
-            <Card><p className="empty">Select an invoice or create a new one.</p></Card>
+            <Card><p className="empty">Select an order or create a new one.</p></Card>
           )}
         </main>
       </div>

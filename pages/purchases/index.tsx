@@ -5,12 +5,21 @@ import { trpc } from '@/lib/trpc/client';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
+interface ExtractedItem {
+  name: string;
+  sku: string | null;
+  quantity: number;
+  unit_price: number;
+  mappedProductId: string; // user picks from dropdown
+}
+
 export default function PurchasesPage() {
   const router = useRouter();
   const purchasesQuery = trpc.purchase.list.useQuery();
   const contactsQuery = trpc.contact.list.useQuery();
   const productsQuery = trpc.inventory.list.useQuery();
   const createMutation = trpc.purchase.create.useMutation();
+  const extractMutation = trpc.purchase.extractDocument.useMutation();
   const createContactMutation = trpc.contact.create.useMutation();
   const createProductMutation = trpc.inventory.createProduct.useMutation();
   const utils = trpc.useContext();
@@ -36,6 +45,8 @@ export default function PurchasesPage() {
   // New product form state
   const [showNewProduct, setShowNewProduct] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: '', sku: '', price: '', costPrice: '', stock: '' });
+  // Which extracted-item row triggered the new product form (-1 = manual mode)
+  const [newProductForRow, setNewProductForRow] = useState<number>(-1);
 
   const handleCreateProduct = async () => {
     if (!newProduct.name.trim() || !newProduct.sku.trim()) return;
@@ -47,23 +58,99 @@ export default function PurchasesPage() {
       stock: parseInt(newProduct.stock) || 0,
     });
     await utils.inventory.list.invalidate();
-    setManualItems([...manualItems, { productId: res.product.id, quantity: 1 }]);
+    if (newProductForRow >= 0 && extractedItems.length > newProductForRow) {
+      // Map the newly created product back to the extracted row
+      const copy = [...extractedItems];
+      copy[newProductForRow] = { ...copy[newProductForRow], mappedProductId: res.product.id };
+      setExtractedItems(copy);
+    } else {
+      setManualItems([...manualItems, { productId: res.product.id, quantity: 1 }]);
+    }
     setNewProduct({ name: '', sku: '', price: '', costPrice: '', stock: '' });
     setShowNewProduct(false);
+    setNewProductForRow(-1);
   };
 
-  // Simulated parse state
-  const [fileUploaded, setFileUploaded] = useState(false);
+  // Upload extraction state
   const [isParsing, setIsParsing] = useState(false);
+  const [extractedItems, setExtractedItems] = useState<ExtractedItem[]>([]);
+  const [extractedMeta, setExtractedMeta] = useState<{ supplier_name: string | null; invoice_number: string | null; total_amount: number | null } | null>(null);
+  const [extractError, setExtractError] = useState<string | null>(null);
 
-  // Hardcoded extracted items mimicking the prompt
-  // We'll map them to the first available supplier and known products for the MVP
-  const hardcodedSupplier = suppliers.length > 0 ? suppliers[0].id : '';
-  const parsedItems = [
-    { productId: 'p1', name: 'Wireless Mouse', quantity: 20 },
-    { productId: 'p3', name: 'Keyboard', quantity: 10 },
-    { productId: 'p2', name: 'USB Cable', quantity: 50 } // actually USB-C Hub
-  ];
+  // Auto-match extracted item name to closest existing product
+  const fuzzyMatchProduct = (name: string): string => {
+    const lower = name.toLowerCase();
+    for (const p of products) {
+      if (p.name.toLowerCase().includes(lower) || lower.includes(p.name.toLowerCase())) {
+        return p.id;
+      }
+    }
+    return '';
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Client-side size guard (10 MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setExtractError('File is too large. Maximum size is 10 MB.');
+      return;
+    }
+
+    setIsParsing(true);
+    setExtractError(null);
+    setExtractedItems([]);
+    setExtractedMeta(null);
+
+    try {
+      // Read file as base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Strip the data:...;base64, prefix
+          resolve(result.split(',')[1] || result);
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      });
+
+      const res = await extractMutation.mutateAsync({
+        base64,
+        mimeType: file.type as any,
+        filename: file.name,
+      });
+
+      const { data } = res;
+      setExtractedMeta({
+        supplier_name: data.supplier_name,
+        invoice_number: data.invoice_number,
+        total_amount: data.total_amount,
+      });
+
+      // Map extracted items with fuzzy product matching
+      setExtractedItems(
+        (data.items || []).map((item) => ({
+          name: item.name,
+          sku: item.sku,
+          quantity: item.quantity || 1,
+          unit_price: item.unit_price || 0,
+          mappedProductId: fuzzyMatchProduct(item.name),
+        })),
+      );
+
+      // Try to auto-match supplier by name
+      if (data.supplier_name) {
+        const match = suppliers.find((s) => s.name.toLowerCase().includes(data.supplier_name!.toLowerCase()));
+        if (match) setNewSupplierId(match.id);
+      }
+    } catch (err: any) {
+      setExtractError(err?.message || 'Extraction failed. Please try again or use manual entry.');
+    } finally {
+      setIsParsing(false);
+    }
+  };
 
   useEffect(() => {
     if (router.query.new === 'true') {
@@ -107,17 +194,6 @@ export default function PurchasesPage() {
     setShowNewSupplier(false);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setIsParsing(true);
-      setTimeout(() => {
-        setIsParsing(false);
-        setFileUploaded(true);
-        setNewSupplierId(hardcodedSupplier);
-      }, 1500);
-    }
-  };
-
   const manualTotal = useMemo(() => {
     return manualItems.reduce((sum, item) => {
       const prod = products.find(p => p.id === item.productId);
@@ -125,13 +201,17 @@ export default function PurchasesPage() {
     }, 0);
   }, [manualItems, products]);
 
+  const uploadMappedItems = useMemo(() => {
+    return extractedItems.filter((i) => i.mappedProductId && i.quantity > 0);
+  }, [extractedItems]);
+
   const handleCreate = async () => {
     if (!newSupplierId) return;
 
     let createItems: { productId: string; quantity: number }[];
     if (createMode === 'upload') {
-      if (!fileUploaded) return;
-      createItems = parsedItems.map(i => ({ productId: i.productId, quantity: i.quantity }));
+      if (uploadMappedItems.length === 0) return;
+      createItems = uploadMappedItems.map((i) => ({ productId: i.mappedProductId, quantity: i.quantity }));
     } else {
       const valid = manualItems.filter(i => i.productId && i.quantity > 0);
       if (valid.length === 0) return;
@@ -143,7 +223,9 @@ export default function PurchasesPage() {
 
     setShowCreate(false);
     setNewSupplierId('');
-    setFileUploaded(false);
+    setExtractedItems([]);
+    setExtractedMeta(null);
+    setExtractError(null);
     setManualItems([]);
     setCreateMode('upload');
     setShowNewSupplier(false);
@@ -152,7 +234,9 @@ export default function PurchasesPage() {
 
   const cancelCreate = () => {
     setShowCreate(false);
-    setFileUploaded(false);
+    setExtractedItems([]);
+    setExtractedMeta(null);
+    setExtractError(null);
     setManualItems([]);
     setCreateMode('upload');
     setShowNewSupplier(false);
@@ -189,24 +273,49 @@ export default function PurchasesPage() {
               <h3>New Purchase</h3>
 
               <div className="mode-toggle">
-                <button className={`mode-btn ${createMode === 'upload' ? 'active' : ''}`} onClick={() => setCreateMode('upload')}>Upload PDF</button>
+                <button className={`mode-btn ${createMode === 'upload' ? 'active' : ''}`} onClick={() => setCreateMode('upload')}>Upload Bill</button>
                 <button className={`mode-btn ${createMode === 'manual' ? 'active' : ''}`} onClick={() => setCreateMode('manual')}>Add Manually</button>
               </div>
 
               {createMode === 'upload' ? (
                 <>
-                  {!fileUploaded ? (
+                  {extractedItems.length === 0 && !isParsing && !extractError ? (
                     <div className="upload-area">
-                      <p>Select a PDF bill from your supplier</p>
+                      <p>Upload a PDF or image of your supplier bill</p>
                       <label className="upload-btn">
-                        <input type="file" accept=".pdf" onChange={handleFileUpload} style={{ display: 'none' }} />
-                        {isParsing ? 'Extracting Bill Data...' : 'Choose PDF File'}
+                        <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp,application/pdf" onChange={handleFileUpload} style={{ display: 'none' }} />
+                        Choose File
                       </label>
+                      <p style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>PDF, PNG, JPG, or WebP — max 10 MB</p>
+                    </div>
+                  ) : isParsing ? (
+                    <div className="upload-area">
+                      <div className="spinner" />
+                      <p style={{ marginTop: '12px', fontWeight: 600 }}>Extracting bill data…</p>
+                      <p style={{ fontSize: '12px', color: '#888' }}>This may take a few seconds</p>
+                    </div>
+                  ) : extractError ? (
+                    <div className="upload-area" style={{ borderColor: '#e53e3e' }}>
+                      <p style={{ color: '#e53e3e', fontWeight: 600 }}>Extraction failed</p>
+                      <p style={{ fontSize: '13px', color: '#888', margin: '8px 0' }}>{extractError}</p>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                        <label className="upload-btn">
+                          <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp,application/pdf" onChange={handleFileUpload} style={{ display: 'none' }} />
+                          Try Again
+                        </label>
+                        <button className="mode-btn active" style={{ borderRadius: '8px', padding: '10px 20px' }} onClick={() => { setExtractError(null); setCreateMode('manual'); }}>Enter Manually</button>
+                      </div>
                     </div>
                   ) : (
                     <div className="parsed-bill">
-                      <div className="parsed-success">✓ Bill Parsed Successfully</div>
-                      <label className="field-label">Detected Supplier</label>
+                      <div className="parsed-success">
+                        ✓ Bill Parsed — {extractedItems.length} item{extractedItems.length !== 1 ? 's' : ''} found
+                        {extractedMeta?.invoice_number && <span style={{ fontWeight: 400, marginLeft: '8px' }}>Invoice #{extractedMeta.invoice_number}</span>}
+                      </div>
+
+                      <label className="field-label">
+                        Supplier{extractedMeta?.supplier_name && <span style={{ fontWeight: 400, color: '#888' }}> — detected: {extractedMeta.supplier_name}</span>}
+                      </label>
                       <div className="supplier-picker">
                         <select className="field-select" value={newSupplierId} onChange={(e) => setNewSupplierId(e.target.value)}>
                           <option value="">Select supplier…</option>
@@ -237,22 +346,98 @@ export default function PurchasesPage() {
                         </div>
                       )}
 
-                      <label className="field-label">Extracted Items</label>
-                      <ul className="extracted-items" style={{ margin: '10px 0', padding: '10px', background: 'rgba(81, 98, 255, 0.05)', borderRadius: '8px', listStyle: 'none' }}>
-                        {parsedItems.map((item, idx) => {
-                          const prod = products.find(p => p.id === item.productId);
-                          const unitPrice = prod ? `₹${prod.price.toLocaleString('en-IN')}` : '';
-                          return (
-                            <li key={idx} style={{ padding: '6px 0', borderBottom: idx < parsedItems.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none' }}>
-                              <strong>{item.name}</strong>{unitPrice ? ` (${unitPrice}/unit)` : ''} – qty {item.quantity}
-                            </li>
-                          );
-                        })}
-                      </ul>
+                      <label className="field-label">Extracted Items — map each to a product</label>
+                      <div className="extracted-table">
+                        <div className="et-header">
+                          <span className="et-col-name">Bill Item</span>
+                          <span className="et-col-qty">Qty</span>
+                          <span className="et-col-price">Price</span>
+                          <span className="et-col-map">Map to Product</span>
+                        </div>
+                        {extractedItems.map((item, idx) => (
+                          <div key={idx} className="et-row">
+                            <span className="et-col-name" title={item.sku ? `SKU: ${item.sku}` : undefined}>
+                              {item.name}{item.sku ? <small style={{ color: '#888' }}> ({item.sku})</small> : null}
+                            </span>
+                            <input
+                              className="field-input et-col-qty"
+                              type="number" min={1}
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const copy = [...extractedItems];
+                                copy[idx] = { ...copy[idx], quantity: parseInt(e.target.value) || 0 };
+                                setExtractedItems(copy);
+                              }}
+                            />
+                            <span className="et-col-price">₹{item.unit_price.toLocaleString('en-IN')}</span>
+                            <div className="et-col-map">
+                              <select
+                                className="field-select"
+                                value={item.mappedProductId}
+                                onChange={(e) => {
+                                  const copy = [...extractedItems];
+                                  copy[idx] = { ...copy[idx], mappedProductId: e.target.value };
+                                  setExtractedItems(copy);
+                                }}
+                              >
+                                <option value="">— Select —</option>
+                                {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                              </select>
+                              <button
+                                className="new-prod-link"
+                                onClick={() => {
+                                  setNewProductForRow(idx);
+                                  setNewProduct({ name: item.name, sku: item.sku || '', price: String(item.unit_price || ''), costPrice: String(item.unit_price || ''), stock: '' });
+                                  setShowNewProduct(true);
+                                }}
+                              >
+                                + New
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {showNewProduct && (
+                        <div className="new-contact-form" style={{ marginTop: '12px' }}>
+                          <label className="field-label">Product Name *</label>
+                          <input className="field-input" placeholder="Product name" value={newProduct.name} onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })} />
+                          <label className="field-label">SKU *</label>
+                          <input className="field-input" placeholder="SKU code" value={newProduct.sku} onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })} />
+                          <label className="field-label">Selling Price (₹)</label>
+                          <input className="field-input" type="number" placeholder="0" value={newProduct.price} onChange={(e) => setNewProduct({ ...newProduct, price: e.target.value })} />
+                          <label className="field-label">Cost Price (₹)</label>
+                          <input className="field-input" type="number" placeholder="0" value={newProduct.costPrice} onChange={(e) => setNewProduct({ ...newProduct, costPrice: e.target.value })} />
+                          <label className="field-label">Stock</label>
+                          <input className="field-input" type="number" placeholder="0" value={newProduct.stock} onChange={(e) => setNewProduct({ ...newProduct, stock: e.target.value })} />
+                          <div className="form-actions" style={{ marginTop: '8px' }}>
+                            <Button size="sm" variant="ghost" onClick={() => { setShowNewProduct(false); setNewProductForRow(-1); }}>Cancel</Button>
+                            <Button size="sm" onClick={handleCreateProduct} disabled={!newProduct.name.trim() || !newProduct.sku.trim() || createProductMutation.isLoading}>
+                              {createProductMutation.isLoading ? 'Adding…' : 'Add Product'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {extractedMeta?.total_amount != null && (
+                        <div className="total-preview" style={{ marginTop: '12px' }}>
+                          Bill Total: <strong>₹{extractedMeta.total_amount.toLocaleString('en-IN')}</strong>
+                        </div>
+                      )}
+
+                      {uploadMappedItems.length < extractedItems.length && extractedItems.length > 0 && (
+                        <p style={{ fontSize: '12px', color: '#e53e3e', margin: '8px 0 0' }}>
+                          {extractedItems.length - uploadMappedItems.length} item{extractedItems.length - uploadMappedItems.length !== 1 ? 's' : ''} not mapped — map or remove them to continue
+                        </p>
+                      )}
 
                       <div className="form-actions">
-                        <Button size="sm" variant="ghost" onClick={cancelCreate}>Cancel</Button>
-                        <Button size="sm" onClick={handleCreate} disabled={createMutation.isLoading}>
+                        <Button size="sm" variant="ghost" onClick={cancelCreate} style={{ color: 'var(--danger-500, #ff6b6b)' }}>Cancel</Button>
+                        <Button size="sm" variant="success" onClick={() => { const el = document.getElementById('reupload-input'); el?.click(); }}>
+                          <input id="reupload-input" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp,application/pdf" onChange={handleFileUpload} style={{ display: 'none' }} />
+                          Re-upload
+                        </Button>
+                        <Button size="sm" onClick={handleCreate} disabled={createMutation.isLoading || uploadMappedItems.length === 0 || !newSupplierId}>
                           {createMutation.isLoading ? 'Confirming…' : 'Confirm Purchase'}
                         </Button>
                       </div>
@@ -472,9 +657,44 @@ export default function PurchasesPage() {
           cursor: pointer; font-weight: 600; margin-top: 12px;
         }
         .parsed-success {
-          color: #38a169; font-weight: 600; background: #f0fff4; 
-          padding: 10px; border-radius: 8px; text-align: center; 
+          color: var(--success-500, #32c98d); font-weight: 600; background: #f0fff4; 
+          padding: 10px; border-radius: 20px; text-align: center; 
           margin-bottom: 16px; border: 1px solid #c6f6d5;
+        }
+        .total-preview { font-size: 14px; color: #555; }
+
+        /* Spinner for extraction loading */
+        .spinner {
+          width: 32px; height: 32px; border: 3px solid #e2e8f0;
+          border-top-color: #5162ff; border-radius: 50%;
+          animation: spin 0.8s linear infinite; margin: 0 auto;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Extracted items table */
+        .extracted-table {
+          border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;
+          margin-top: 8px; font-size: 13px;
+        }
+        .et-header, .et-row {
+          display: grid; grid-template-columns: 2fr 60px 70px 2fr;
+          gap: 6px; align-items: center; padding: 8px 10px;
+        }
+        .et-header {
+          background: #f7fafc; font-weight: 600; color: #555; font-size: 12px;
+          border-bottom: 1px solid #e2e8f0;
+        }
+        .et-row { border-bottom: 1px solid #f0f0f0; }
+        .et-row:last-child { border-bottom: none; }
+        .et-col-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .et-col-qty { text-align: center; }
+        .et-col-qty input, .et-col-qty.field-input { width: 100%; padding: 4px; text-align: center; }
+        .et-col-price { text-align: right; color: #555; }
+        .et-col-map { display: flex; align-items: center; gap: 4px; }
+        .et-col-map select { flex: 1; min-width: 0; font-size: 12px; }
+        .new-prod-link {
+          background: none; border: none; color: #5162ff; cursor: pointer;
+          font-size: 11px; font-weight: 600; white-space: nowrap; padding: 2px 4px;
         }
 
         .back-btn {

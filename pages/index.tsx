@@ -33,7 +33,7 @@ export default function Dashboard() {
 
       <div className="action-row">
         <Link href="/orders?new=true">
-          <Button size="lg">+ Create Invoice</Button>
+          <Button size="lg">+ New Order</Button>
         </Link>
         <Link href="/purchases?new=true">
           <Button size="lg">+ Add Purchase</Button>

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import Layout from '@/components/layout/Layout';
 import { trpc } from '@/lib/trpc/client';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { TagPill } from '@/components/ui/TagPill';
 
 export default function ContactsPage() {
@@ -11,8 +12,40 @@ export default function ContactsPage() {
   const [tab, setTab] = useState<'activity' | 'ledger'>('activity');
   const [mobileView, setMobileView] = useState<'list' | 'detail'>('list');
 
+  const createMutation = trpc.contact.create.useMutation();
+  const utils = trpc.useContext();
+
   const contacts = contactsQuery.data?.contacts ?? [];
   const allEntries = ledgerQuery.data?.entries ?? [];
+
+  // Create contact form state
+  const [showCreate, setShowCreate] = useState(false);
+  const [newContact, setNewContact] = useState({
+    name: '', email: '', phone: '', notes: '',
+    type: 'customer' as 'customer' | 'supplier',
+    address1: '',
+  });
+
+  const resetCreateForm = () => {
+    setNewContact({ name: '', email: '', phone: '', notes: '', type: 'customer', address1: '' });
+    setShowCreate(false);
+    setMobileView('list');
+  };
+
+  const handleCreateContact = async () => {
+    if (!newContact.name.trim()) return;
+    const res = await createMutation.mutateAsync({
+      name: newContact.name.trim(),
+      email: newContact.email.trim() || undefined,
+      phone: newContact.phone.trim() || undefined,
+      type: newContact.type,
+      notes: newContact.notes.trim() || undefined,
+      address: newContact.address1.trim() ? { address1: newContact.address1.trim() } : undefined,
+    });
+    await utils.contact.list.invalidate();
+    setSelectedId(res.contact.id);
+    resetCreateForm();
+  };
 
   const selected = useMemo(
     () => contacts.find((c) => c.id === selectedId) ?? contacts[0] ?? null,
@@ -56,6 +89,7 @@ export default function ContactsPage() {
           <Card padding="0">
             <div className="list-header">
               <h3>All Contacts</h3>
+              <Button size="sm" onClick={() => { setShowCreate(true); setMobileView('detail'); }}>+ Add Contact</Button>
             </div>
             {contacts.map((c) => (
               <button
@@ -75,7 +109,50 @@ export default function ContactsPage() {
         </aside>
 
         <main className={`contact-detail ${mobileView === 'detail' ? 'mobile-show' : 'mobile-hide'}`}>
-          {selected ? (
+          {showCreate ? (
+            <Card>
+              <button className="back-btn" onClick={resetCreateForm}>← Back</button>
+              <h3 style={{ margin: '0 0 16px' }}>New Contact</h3>
+
+              <label className="field-label">Type</label>
+              <div className="type-chips">
+                <button
+                  className={`type-chip ${newContact.type === 'customer' ? 'active customer' : ''}`}
+                  onClick={() => setNewContact({ ...newContact, type: 'customer' })}
+                >
+                  Customer
+                </button>
+                <button
+                  className={`type-chip ${newContact.type === 'supplier' ? 'active supplier' : ''}`}
+                  onClick={() => setNewContact({ ...newContact, type: 'supplier' })}
+                >
+                  Supplier
+                </button>
+              </div>
+
+              <label className="field-label">Name *</label>
+              <input className="field-input" placeholder="Contact name" value={newContact.name} onChange={(e) => setNewContact({ ...newContact, name: e.target.value })} />
+
+              <label className="field-label">Email</label>
+              <input className="field-input" type="email" placeholder="Email address" value={newContact.email} onChange={(e) => setNewContact({ ...newContact, email: e.target.value })} />
+
+              <label className="field-label">Phone</label>
+              <input className="field-input" type="tel" placeholder="Phone number" value={newContact.phone} onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })} />
+
+              <label className="field-label">Address</label>
+              <input className="field-input" placeholder="Street address" value={newContact.address1} onChange={(e) => setNewContact({ ...newContact, address1: e.target.value })} />
+
+              <label className="field-label">Notes</label>
+              <textarea className="field-textarea" placeholder="Optional notes" rows={3} value={newContact.notes} onChange={(e) => setNewContact({ ...newContact, notes: e.target.value })} />
+
+              <div className="form-actions">
+                <Button size="sm" variant="ghost" onClick={resetCreateForm}>Cancel</Button>
+                <Button size="sm" onClick={handleCreateContact} disabled={!newContact.name.trim() || createMutation.isLoading}>
+                  {createMutation.isLoading ? 'Creating…' : 'Create Contact'}
+                </Button>
+              </div>
+            </Card>
+          ) : selected ? (
             <Card>
               <button className="back-btn" onClick={() => setMobileView('list')}>← Back</button>
               <div className="detail-header">
@@ -166,6 +243,7 @@ export default function ContactsPage() {
         }
         .contacts-list { overflow-y: auto; }
         .list-header {
+          display: flex; justify-content: space-between; align-items: center;
           padding: 14px 16px 10px;
           border-bottom: 1px solid rgba(210,216,255,0.25);
         }
@@ -214,6 +292,26 @@ export default function ContactsPage() {
         .credit { color: #16a34a; }
         .debit { color: #dc2626; }
         .empty { color: var(--text-tertiary); text-align: center; padding: 24px 0; }
+
+        .field-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 12px 0 4px; }
+        .field-input, .field-textarea {
+          display: block; width: 100%; padding: 8px 10px; border: 1px solid rgba(210,216,255,0.4);
+          border-radius: 16px; font-size: 13px; background: white; margin-bottom: 6px;
+          outline: none; transition: border-color 0.15s; font-family: inherit;
+        }
+        .field-textarea { border-radius: 12px; resize: vertical; }
+        .field-input:focus, .field-textarea:focus { border-color: rgba(81,98,255,0.6); }
+        .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+        .type-chips { display: flex; gap: 8px; margin-bottom: 4px; }
+        .type-chip {
+          padding: 6px 18px; border-radius: 20px; border: 1.5px solid rgba(210,216,255,0.5);
+          background: white; font-size: 13px; font-weight: 500; cursor: pointer;
+          color: var(--text-secondary); transition: all 0.15s;
+        }
+        .type-chip:hover { border-color: rgba(81,98,255,0.4); }
+        .type-chip.active.customer { background: rgba(22,163,74,0.1); border-color: #16a34a; color: #16a34a; }
+        .type-chip.active.supplier { background: rgba(234,179,8,0.1); border-color: #ca8a04; color: #ca8a04; }
 
         .back-btn {
           display: none;
